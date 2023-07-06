@@ -16,7 +16,7 @@ const initializeDBAndServer = async () => {
       filename: dbPath,
       driver: sqlite3.Database,
     });
-    app.listen(3000, () => {
+    app.listen(3001, () => {
       console.log("Server Running at http://localhost:3000/");
     });
   } catch (e) {
@@ -105,22 +105,39 @@ app.get("/players/:playerId/matches", async (request, response) => {
   const { playerId } = request.params;
   const getPlayerMatches = `
     SELECT 
-        match_id, 
-        match,
-        year 
+        *
     FROM 
         match_details
-    INNER JOIN player_details ON 
-        match_details.match_id = player_details.player_id
+    NATURAL JOIN 
+        player_match_score
     WHERE 
         player_id = ${playerId}`;
   const matchDetails = await db.all(getPlayerMatches);
-  response.send(matchDetails);
+  response.send(
+    matchDetails.map((eachMatch) =>
+      convertMatchDetailsDbObjectToResponseObject(eachMatch)
+    )
+  );
 });
 
 //Returns a list of players of a specific match
 app.get("/matches/:matchId/players", async (request, response) => {
   const { matchId } = request.params;
+  const getMatchesPlayerQuery = `
+    SELECT 
+        *
+    FROM 
+        player_match_score
+    NATURAL JOIN 
+        player_details
+    WHERE 
+        match_id = ${matchId}`;
+  const playersArray = await db.all(getMatchesPlayerQuery);
+  response.send(
+    playersArray.map((eachPlayer) =>
+      convertPlayerDetailsDbObjectToResponseObject(eachPlayer)
+    )
+  );
 });
 
 //Returns the statistics of the total score, fours, sixes of a specific player based on the player ID
@@ -130,13 +147,12 @@ app.get("/players/:playerId/playerScores", async (request, response) => {
     SELECT 
         player_id AS playerId,
         player_name AS playerName,
-        score AS totalScore,
-        fours AS totalFours,
-        sixes AS totalSixes
+        SUM(score) AS totalScore,
+        SUM(fours) AS totalFours,
+        SUM(sixes) AS totalSixes
     FROM
         player_match_score
-    INNER JOIN player_details ON
-        player_details.player_id = player_match_score.player_id
+    NATURAL JOIN player_details
     WHERE
         player_id = ${playerId}`;
   const playerStats = await db.get(getPlayerStatsQuery);
